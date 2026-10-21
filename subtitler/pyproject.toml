@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "subtitler"
+version = "0.1.0"
+description = "An open-source subtitle transcription and translation pipeline"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "AGPL-3.0-or-later"}
+dependencies = ["python-dotenv>=1.0", "openai>=1.30", "requests>=2.31", "pysubs2>=1.7", "gradio>=4.0", "deepgram-sdk>=3.0"]
+
+[tool.ruff]
+line-length = 100
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = ["E501", "E701"]
