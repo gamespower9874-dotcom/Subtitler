@@ -1,0 +1,13 @@
+[project]
+name = "subtitler"
+version = "0.1.0"
+description = "Open-source subtitle pipeline: transcription, diarization, adapted translation, Netflix-style QC"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "AGPL-3.0-or-later" }
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
