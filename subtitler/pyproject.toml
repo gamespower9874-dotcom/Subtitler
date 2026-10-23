@@ -4,15 +4,37 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "subtitler"
-version = "0.1.0"
+version = "0.2.0"
 description = "An open-source subtitle transcription and translation pipeline"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "AGPL-3.0-or-later"}
-dependencies = ["python-dotenv>=1.0", "openai>=1.30", "requests>=2.31", "pysubs2>=1.7", "gradio>=4.0", "deepgram-sdk>=3.0"]
+authors = [{name = "Subtitler contributors"}]
+dependencies = [
+    "python-dotenv>=1.0",
+    "openai>=1.30",
+    "requests>=2.31",
+    "pysubs2>=1.7",
+    "gradio>=4.0",
+    "deepgram-sdk>=3.0",
+]
+
+[project.optional-dependencies]
+local = ["faster-whisper>=1.0", "silero-vad>=5.1"]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+subtitler-cli = "app.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
 
 [tool.ruff]
 line-length = 100
 [tool.ruff.lint]
 select = ["E", "F"]
 ignore = ["E501", "E701"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

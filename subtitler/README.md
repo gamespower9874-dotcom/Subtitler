@@ -1,93 +1,139 @@
-# subtitler
+# Subtitler
 
-An open-source subtitle pipeline for turning video into readable, translated SRT subtitles with audio mastering and quality control.
+Subtitler is an open-source (AGPL-3.0-or-later) Python pipeline for
+**transcribing** and **translating** video subtitles. It ships with a
+Gradio web UI, a command-line interface, and ready-to-use PyInstaller
+recipes for Windows.
 
 ## Features
 
-- FFprobe track inspection and deterministic WAV extraction (48 kHz, 24-bit PCM).
-- Speech recognition through OpenAI Whisper or Deepgram Nova-2, including diarization where supported.
-- Automatic chunking for Whisper inputs larger than 25 MB.
-- Adapted xAI Grok translation with glossary and previous-line context.
-- Netflix-style subtitle QC: line length, reading speed, duration, gaps, and line balancing.
-- Gradio interface and a Python API suitable for automation.
-- No uploads or persistent storage by default.
+* **API mode** using OpenAI Whisper or Deepgram Nova-2.
+* **Local mode** using [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
+  with built-in Silero VAD and three sensitivity presets
+  (`conservative`, `balanced`, `aggressive`).
+* **Japanese post-processing** (`app/jp_postprocess.py`) that filters
+  Whisper hallucinations (consecutive repeats, n-gram loops,
+  no-speech lines, music cues, kana-only noise), merges short segments
+  on trailing particles (ね/よ/わ/か/な/ぞ/ぜ) and clamps / dedupes
+  timings.
+* **Ensemble mode** that combines two transcription passes and fills
+  the gaps in the primary output with the secondary pass.
+* **Run reports** (`app/run_report.py`) emitted as `run.json` plus a
+  one-line console summary.
+* **Batch discovery** (`app/batch.py`) for folders with `--recursive`
+  and `--skip-existing` flags.
+* **Pluggable translation providers** (`app/translate_providers.py`)
+  using the OpenAI-compatible SDK with a configurable `base_url`:
+  Grok (xAI), DeepSeek, Gemini, Ollama (local) and OpenAI.
+* **VTT output** alongside SRT (`--output-format both`).
+* **QC rules** (`app/qc.py`) with CPS / duration / gap checks.
 
-## Install
-
-### Local virtual environment
+## Quick start
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+pip install -r requirements-local.txt  # optional local extras
+cp .env.example .env  # then fill in the API keys you need
+```
+
+### Gradio UI
+
+```bash
 python -m app.ui
 ```
 
-Open the printed Gradio URL, normally `http://127.0.0.1:7860`.
-
-### Docker
+### CLI
 
 ```bash
-docker build -t subtitler .
-docker run --rm -p 7860:7860 --env-file .env subtitler
+python -m app.cli path/to/video.mp4 \
+    --mode local --sensitivity balanced \
+    --translate --provider grok --target-lang French \
+    --output-format both
 ```
 
-FFmpeg is required locally and is included in the Docker image.
+## Bring your own API keys
 
-## API keys
+Subtitler does **not** ship with API keys and never will. You supply
+them yourself, and they stay on your machine.
 
-| Variable | Provider | Used for |
-|---|---|---|
-| `OPENAI_API_KEY` | OpenAI | Whisper transcription |
-| `DEEPGRAM_API_KEY` | Deepgram | Nova-2 transcription |
-| `XAI_API_KEY` | xAI | Grok translation |
-| `GROK_MODEL` | xAI | Model name; defaults to `grok-4` |
-| `HF_TOKEN` | Hugging Face | Reserved for future separation models |
+### Where keys go
 
-Copy `.env.example` to `.env` and add your own keys. Never commit secrets.
+| Where | How |
+|---|---|
+| **Web UI** | Open the **Settings — API keys (optional)** accordion. Each provider has its own field with `type="password"`; values are held in the browser session and sent along with the next transcription request. Leave a field blank to fall back to the matching env var. |
+| **`.env` file** | Copy `.env.example` to `.env` and fill the placeholders. `.env` is gitignored. The keys are loaded only when the Python process starts. |
+| **CLI flags** | `--api-key-openai`, `--api-key-deepgram`, `--api-key-grok`/`--api-key-xai`, `--api-key-deepseek`, `--api-key-gemini`, `--api-key-hf`, `--ollama-base-url`. These override `.env` for that single invocation. |
 
-## Usage
+A small **Test translation keys** button in the Settings panel runs an
+offline presence check for each provider without making a network call,
+so you can confirm the key was typed correctly.
 
-The UI accepts a video file, an engine, source and target languages, and an optional glossary. It writes an SRT file, a mastered WAV file, and a JSON QC report to a temporary working directory. For Python use:
+### Priority
 
-```python
-from app.pipeline import run_pipeline
+For each provider, the backend tries, in order:
 
-result = run_pipeline("input.mp4", engine_name="openai", target_language="French")
-print(result.srt_path, result.qc_report)
+1. The value typed into the UI for **this request** (highest priority).
+2. The value passed via CLI flag (`--api-key-<provider>`).
+3. The value in the local `.env` file or process environment.
+
+Per-request values never outlive the request.
+
+### Privacy
+
+* Keys are **never** written to disk by the application.
+* Keys are **never** logged; the run report (`run.json`), QC output,
+  exception messages, and the console summary are scrubbed through
+  `app.secrets.Secrets.redact_string` before they are saved or printed.
+* Keys are **never** included in the per-request error response back to
+  the browser.
+* The Gradio backend is local (`127.0.0.1` in `launcher.py`,
+  `0.0.0.0` only when explicitly launched via `python -m app.ui`).
+* When you choose an external provider (OpenAI, Deepgram, xAI, …), the
+  audio and translated text are sent to that provider under *their*
+  retention policy — Subtitler has no visibility into that side-channel.
+* **Never commit `.env`**. `.env` is in `.gitignore`; only `.env.example`
+  with empty placeholders is tracked.
+
+## UI
+
+Subtitler ships with a Gradio web UI (`app/ui.py`) exposing three tabs:
+
+* **Transcribe** — drop one or more video files (or a folder), pick the
+  transcription mode (`api` for OpenAI Whisper / Deepgram Nova-2, or
+  `local` for `faster-whisper` + Silero VAD), the model size, the
+  sensitivity preset, the output format (SRT / VTT / both) and
+  optionally enable translation. The pipeline streams progress and
+  finishes by giving you the `.srt` (and `.vtt`) downloads alongside a
+  `run.json` report.
+* **Settings — API keys (optional)** — `password` text boxes for every
+  supported provider (OpenAI, Deepgram, xAI / Grok, DeepSeek, Gemini,
+  HF token, Ollama base URL). Keys live only in the browser session,
+  are forwarded per request, and are never written to disk. The
+  **Test keys** button performs a real, lightweight validation call
+  for each provider and reports OK / Invalid without ever echoing the
+  key back.
+* **About** — short blurb on FFmpeg requirements, the bring-your-own
+  keys policy and the pluggable translation providers.
+
+Launch the UI from the project root:
+
+```bash
+python -m app.ui          # default: 127.0.0.1:7860
+# or, on Windows / frozen builds:
+python launcher.py
 ```
 
-## Project structure
+Both code paths start Gradio on `127.0.0.1` (loopback only) so the
+backend never accidentally exposes your keys to the network. The
+Gradio status banner reports whether FFmpeg / FFprobe are available.
 
-```text
-app/                 Pipeline package and Gradio UI
-tests/               Offline unit tests
-docs/                Additional project documentation
-.github/             CI and contribution templates
-```
+## Inspiration
 
-## Roadmap
-
-- [ ] Demucs separation
-- [ ] Per-segment language detection
-- [ ] Agentic character voice profiles
-- [ ] Anonymous community translation platform
-- [ ] TTML export
-
-## Responsible use
-
-This project does not distribute videos. You are responsible for having the rights and permissions needed for every file and API submission. Use it only for adults-only legal, consensual content; never use it for minors or non-consensual content. The software is provided without warranty, and third-party providers may have their own terms and retention policies.
-
-## Contributing
-
-Please read [CONTRIBUTING.md](CONTRIBUTING.md), run `ruff check .` and `pytest`, and keep changes focused. By contributing, you agree to the repository's code of conduct.
+The local Japanese workflow was inspired by ideas from
+[WhisperJAV](https://github.com/Soothsilver/WhisperJAV) (MIT). All code
+in this repository is written from scratch and released under
+AGPL-3.0-or-later; no code from WhisperJAV has been copied.
 
 ## License
 
-AGPL-3.0-or-later. See [LICENSE](LICENSE).
-
-## Windows download
-
-Download `Subtitler-windows-x64.zip` from the latest GitHub Release, unzip it, copy `.env.example` to `.env`, and add the API keys you need. Run `Subtitler.exe`; the console shows logs and the Gradio UI opens automatically. The release bundles FFmpeg in `ffmpeg/`.
-
-To build locally on Windows, run `build_windows.bat` from the repository root. It creates a virtual environment, installs dependencies and PyInstaller, downloads static FFmpeg, and creates `dist\Subtitler`. See [docs/BUILD_WINDOWS.md](docs/BUILD_WINDOWS.md) for details. Because these are unsigned PyInstaller executables, Windows SmartScreen or antivirus tools may report false positives.
+AGPL-3.0-or-later. See `LICENSE` for the full text.

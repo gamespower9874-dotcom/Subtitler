@@ -18,8 +18,17 @@ hiddenimports = [
     "pysubs2",
     "app.ui",
     "app.pipeline",
+    "app.cli",
+    "app.engines.openai_whisper",
+    "app.engines.deepgram_engine",
+    "app.engines.faster_whisper_engine",
+    "app.jp_postprocess",
+    "app.translate_providers",
+    "app.run_report",
+    "app.batch",
+    "app.ensemble",
 ]
-for package in ("gradio", "gradio_client", "groovy", "safehttpx", "pydub"):
+for package in ("gradio", "gradio_client", "groovy", "safehttpx", "pydub", "faster_whisper", "silero_vad"):
     package_datas, package_binaries, package_hiddenimports = collect_optional(package)
     datas += package_datas
     binaries += package_binaries
